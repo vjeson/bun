@@ -1,6 +1,6 @@
 name: Manual Build Windows ARM64
 on:
-  workflow_dispatch: # 允许在 Actions 页面手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,11 +12,25 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v1
-        with:
-          # 切换到 master 以匹配 Bun 开发分支的最新 API 要求
-          version: master 
+      - name: Install Zig Nightly (x64 for Cross-Compile)
+        shell: pwsh
+        run: |
+          # 使用 0.16.0-dev 的 x86_64 版本，因为 GitHub Runner 是 x64 的
+          $zigUrl = "https://ziglang.org/builds/zig-windows-x86_64-0.16.0-dev.2535+b5bd49460.zip"
+          Write-Host "Downloading Zig from $zigUrl..."
+          Invoke-WebRequest -Uri $zigUrl -OutFile zig.zip
+          
+          Write-Host "Extracting Zig..."
+          Expand-Archive -Path zig.zip -DestinationPath .
+          
+          $zigDir = Get-ChildItem -Directory -Filter "zig-windows-x86_64-*" | Select-Object -First 1
+          $fullPath = Join-Path (Get-Location) $zigDir.Name
+          
+          Write-Host "Adding $fullPath to PATH..."
+          echo "$fullPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify Zig Version
+        run: zig version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -28,15 +42,14 @@ jobs:
 
       - name: Build Bun (Native ARM64)
         run: |
-          # 使用 aarch64-windows-msvc 目标进行编译
-          # --summary all 会在日志中列出所有输出文件的位置
-          zig build -Dtarget=aarch64-windows-msvc -Doptimize=ReleaseFast --summary all
+          # 限制并行任务为 1，防止 7GB 内存溢出
+          # 目标明确指向 aarch64-windows-msvc
+          zig build -Dtarget=aarch64-windows-msvc -Doptimize=ReleaseFast --summary all -j 1
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: bun-windows-arm64-binary
-          # 如果 zig-out/bin/bun.exe 找不到，请查看 Action 日志中的 "install" 部分确认路径
           path: |
             zig-out/bin/bun.exe
             packages/bun-windows-arm64/bun.exe
