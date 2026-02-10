@@ -1,0 +1,43 @@
+name: Manual Build Windows ARM64
+on:
+  workflow_dispatch: # 允许在 Actions 页面手动点击运行
+
+jobs:
+  build:
+    name: Build Bun Windows ARM64
+    runs-on: windows-latest # 使用 GitHub 提供的最新 Windows 环境
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 确保获取的是你当前所在的分支代码
+          ref: ${{ github.ref }}
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          # Dylan 的分支目前依赖 Zig 0.13.0 或最新开发版
+          version: 0.13.0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+        working-directory: ./
+
+      - name: Build Bun (Native ARM64)
+        run: |
+          # 核心编译命令：指定目标架构为 aarch64-windows
+          # 如果编译失败，可以尝试去掉 -Doptimize=ReleaseFast 改为 -Doptimize=Debug 以排查问题
+          zig build -Dtarget=aarch64-windows-msvc -Doptimize=ReleaseFast --summary all
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bun-windows-arm64-binary
+          # 编译产物通常位于 zig-out/bin/ 目录下
+          path: zig-out/bin/bun.exe
+          if-no-files-found: error
